@@ -155,7 +155,9 @@ This is in the `visr_bear` subdirectory:
 
     cd visr_bear
 
-The process is the same as for VISR; to configure:
+Most dependencies are provided through submodules (some via submodules of submodules). The exception to this is the [nlohmann JSON library](https://github.com/nlohmann/json) which should be installed seperately. Cmake will attempt to locate this using `find_package`.
+
+The build process is the same as for VISR; to configure:
 
     cmake -B build .
 
