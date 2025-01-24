@@ -20,7 +20,7 @@ jobs:
     - run: nix build .#bear --no-link
 
     - run: nix build .#bear_docker -o bear_docker.tar.gz
-    - uses: actions/upload-artifact@v3
+    - uses: actions/upload-artifact@v4
       with:
         name: bear_docker.tar.gz
         path: bear_docker.tar.gz
