@@ -5,8 +5,9 @@
 #include <libpml/empty_parameter_config.hpp>
 
 #include <boost/array.hpp>
+#include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/placeholders.hpp>
-#include <boost/asio/io_service.hpp>
+#include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/udp.hpp>
 #include <boost/bind/bind.hpp>
 #ifndef VISR_DISABLE_THREADS
@@ -49,21 +50,23 @@ private:
     Mode mMode;
 
     /**
-    * Pointer to the either internally or externally provided externally provided boost::asio::io_service object.
+    * Pointer to the either internally or externally provided externally provided boost::asio::io_context object.
     */
-    boost::asio::io_service* mIoService;
+    boost::asio::io_context* mIoContext;
 
     /**
-    * An actual io_service object owned by this component, which is allocated in the modes Synchronous or Asynchronous,
+    * An actual io_context object owned by this component, which is allocated in the modes Synchronous or Asynchronous,
     * but not for ExternalServiceObject.
     */
-    std::unique_ptr<boost::asio::io_service> mIoServiceInstance;
+    std::unique_ptr<boost::asio::io_context> mIoContextInstance;
 
     std::unique_ptr<boost::asio::ip::udp::socket> mSocket;
 
     boost::asio::ip::udp::endpoint mRemoteEndpoint;
 
-    std::unique_ptr<boost::asio::io_service::work> mIoServiceWork;
+    using IoContextWorkGuard =
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
+    std::unique_ptr<IoContextWorkGuard> mIoContextWork;
 
     /**
     * Internal queue of messages received asynchronously. They will be copied into the output
@@ -106,25 +109,25 @@ UdpSender::Impl::Impl(UdpSender & parent,
 {
     using boost::asio::ip::udp;
     mMode = mode;
-    mIoServiceInstance.reset(new boost::asio::io_service());
-    mIoService = mIoServiceInstance.get();
+    mIoContextInstance.reset(new boost::asio::io_context());
+    mIoContext = mIoContextInstance.get();
 
     if( mMode == Mode::Synchronous )
     {
-      mIoServiceWork.reset();
+      mIoContextWork.reset();
     }
     else
     {
-      mIoServiceWork.reset(new  boost::asio::io_service::work(*mIoService));
+      mIoContextWork.reset(new IoContextWorkGuard(mIoContext->get_executor()));
     }
 
-    udp::resolver resolver(*mIoService);
-    udp::resolver::query query(udp::v4(),
+    udp::resolver resolver(*mIoContext);
+    auto const resolvedEndpoints = resolver.resolve(udp::v4(),
         receiverAddress,
         std::to_string(receiverPort),
-        udp::resolver::query::flags::passive); /* Override the default values for the flag parameter which includes "address_configured"
-                                               that requires a network conection apart from loopback device. */
-    mRemoteEndpoint = *resolver.resolve(query);
+        udp::resolver::flags::passive); /* Override the default values for the flag parameter which includes "address_configured"
+                                           that requires a network conection apart from loopback device. */
+    mRemoteEndpoint = resolvedEndpoints.begin()->endpoint();
     // Debug output:
     // std::cout << "Remote endpoint: " << mRemoteEndpoint.address().to_string() << ":" << mRemoteEndpoint.port() << std::endl;
     if (mRemoteEndpoint.port() != static_cast<unsigned short>(receiverPort))
@@ -133,14 +136,14 @@ UdpSender::Impl::Impl(UdpSender & parent,
     }
 
     udp::endpoint localEndpoint(udp::v4(), static_cast<unsigned short>(sendPort));
-    mSocket.reset(new udp::socket(*mIoService, localEndpoint));
+    mSocket.reset(new udp::socket(*mIoContext, localEndpoint));
 
 #ifdef VISR_DISABLE_THREADS
     throw std::invalid_argument( "UdpSender: Asynchronous mode is not supported because threads are disabled." );
 #else
     if (mMode == Mode::Asynchronous)
     {
-        mServiceThread.reset(new boost::thread(boost::bind(&boost::asio::io_service::run, mIoService)));
+        mServiceThread.reset(new boost::thread(boost::bind(&boost::asio::io_context::run, mIoContext)));
     }
 #endif
 }
@@ -148,9 +151,9 @@ UdpSender::Impl::Impl(UdpSender & parent,
 
 UdpSender::Impl::~Impl()
 {
-  if( mIoServiceInstance.get() != nullptr )
+  if( mIoContextInstance.get() != nullptr )
   {
-    mIoServiceInstance->stop();
+    mIoContextInstance->stop();
   }
 #ifndef VISR_DISABLE_THREADS
   if( mServiceThread.get() != nullptr  )

@@ -457,7 +457,7 @@ ENDIF( BUILD_USE_IPP )
 # Define a minimum boost version
 # Note: This requirement is chosen heuristically at the moment.
 # Todo: Replace by a substantiated version requirement.
-set( VISR_BOOST_MINIMUM_VERSION 1.50 )
+set( VISR_BOOST_MINIMUM_VERSION 1.66 )
 
 option( Boost_USE_STATIC_LIBS "Whether to use static or shared boost libraries." OFF)
 

@@ -5,8 +5,9 @@
 #include <libpml/empty_parameter_config.hpp>
 
 #include <boost/array.hpp>
+#include <boost/asio/executor_work_guard.hpp>
 #include <boost/asio/placeholders.hpp>
-#include <boost/asio/io_service.hpp>
+#include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/udp.hpp>
 #include <boost/bind/bind.hpp>
 #ifndef VISR_DISABLE_THREADS
@@ -44,15 +45,15 @@ private:
     Mode const mMode;
 
     /**
-    * Pointer to the either internally or externally provided externally provided boost::asio::io_service object.
+    * Pointer to the either internally or externally provided externally provided boost::asio::io_context object.
     */
-    boost::asio::io_service* mIoService;
+    boost::asio::io_context* mIoContext;
 
     /**
-    * An actual io_service object owned by this component, which is allocated in the modes Synchronous or Asynchronous,
+    * An actual io_context object owned by this component, which is allocated in the modes Synchronous or Asynchronous,
     * but not for ExternalServiceObject.
     */
-    std::unique_ptr<boost::asio::io_service> mIoServiceInstance;
+    std::unique_ptr<boost::asio::io_context> mIoContextInstance;
 
     std::unique_ptr<boost::asio::ip::udp::socket> mSocket;
 
@@ -60,7 +61,9 @@ private:
 
     boost::array<char, cMaxMessageLength> mReceiveBuffer;
 
-    std::unique_ptr<boost::asio::io_service::work> mIoServiceWork;
+    using IoContextWorkGuard =
+        boost::asio::executor_work_guard<boost::asio::io_context::executor_type>;
+    std::unique_ptr<IoContextWorkGuard> mIoContextWork;
 
     /**
     * Internal queue of messages received asynchronously. They will be copied into the output
@@ -101,18 +104,18 @@ UdpReceiver::Impl::Impl( std::size_t port,
  : mMode( mode )
 {
     using boost::asio::ip::udp;
-    mIoServiceInstance.reset(new boost::asio::io_service());
-    mIoService = mIoServiceInstance.get();
+    mIoContextInstance.reset(new boost::asio::io_context());
+    mIoContext = mIoContextInstance.get();
 
     if (mMode == Mode::Synchronous)
     {
-        mIoServiceWork.reset();
+        mIoContextWork.reset();
     }
     else
     {
-        mIoServiceWork.reset(new  boost::asio::io_service::work(*mIoService));
+        mIoContextWork.reset(new IoContextWorkGuard(mIoContext->get_executor()));
     }
-    mSocket.reset(new udp::socket(*mIoService));
+    mSocket.reset(new udp::socket(*mIoContext));
     boost::system::error_code ec;
     mSocket->open(udp::v4(), ec);
     mSocket->set_option(boost::asio::socket_base::reuse_address(true));
@@ -134,16 +137,16 @@ UdpReceiver::Impl::Impl( std::size_t port,
 #else
     if (mMode == Mode::Asynchronous)
     {
-        mServiceThread.reset(new boost::thread(boost::bind(&boost::asio::io_service::run, mIoService)));
+        mServiceThread.reset(new boost::thread(boost::bind(&boost::asio::io_context::run, mIoContext)));
     }
 #endif // VISR_DISABLE_THREADS
 }
 
 UdpReceiver::Impl::~Impl()
 {
-  if( mIoServiceInstance.get() != nullptr )
+  if( mIoContextInstance.get() != nullptr )
   {
-    mIoServiceInstance->stop();
+    mIoContextInstance->stop();
   }
 #ifndef VISR_DISABLE_THREADS
   if( mServiceThread.get() != nullptr  )
@@ -157,7 +160,7 @@ void UdpReceiver::Impl::process( UdpReceiver::MessageOutput & messageOutput )
 {
   if(  mMode == Mode::Synchronous )
   {
-    mIoService->poll();
+    mIoContext->poll();
   }
 #ifndef VISR_DISABLE_THREADS
   boost::lock_guard<boost::mutex> lock( mMutex );
