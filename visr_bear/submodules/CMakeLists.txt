@@ -5,5 +5,5 @@ if(BEAR_USE_INTERNAL_LIBEAR)
   set(EAR_PACKAGE_AND_INSTALL
       ${BEAR_PACKAGE_AND_INSTALL}
       CACHE BOOL "Package and install libear")
-  add_subdirectory(libear)
+  add_subdirectory(libear-macOS)
 endif()
