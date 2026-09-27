@@ -1,5 +1,12 @@
 cmake_minimum_required(VERSION 3.12.0)
 
+# Use ccache for faster rebuilds when it's installed; a no-op otherwise.
+find_program(CCACHE_PROGRAM ccache)
+if(CCACHE_PROGRAM)
+  set(CMAKE_C_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "")
+  set(CMAKE_CXX_COMPILER_LAUNCHER "${CCACHE_PROGRAM}" CACHE STRING "")
+endif()
+
 project(
   bear
   VERSION 0.1.0
