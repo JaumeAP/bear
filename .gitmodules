@@ -1,3 +1,3 @@
 [submodule "visr_bear/submodules/libear"]
 	path = visr_bear/submodules/libear
-	url = https://github.com/ebu/libear.git
+	url = https://github.com/JaumeAP/libear.git
